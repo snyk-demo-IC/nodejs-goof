@@ -59,27 +59,27 @@ jobs:
           elif grep -q "✓ No new vulnerabilities found" "$RAW_DELTA_OUTPUT_FILE"; then
             echo "✅ No new vulnerabilities detected." >> "$COMMENT_FILE"
           else
-            echo "ℹ️ Snyk Delta scan completed. Review details below." >> "$COMMENT_FILE"Add commentMore actions
+            echo "ℹ️ Snyk Delta scan completed. Review details below." >> "$COMMENT_FILE"
           fi
 
-          echo "" >> "$COMMENT_FILE"Add commentMore actions
+            echo "" >> "$COMMENT_FILE"Add commentMore actions
 
-          # Always include the full raw output in a collapsible Markdown section.
-          # This makes the initial comment concise but provides all details on click.
-          echo "<details><summary>Click to view full Snyk Delta output</summary>" >> "$COMMENT_FILE"
-          echo "" >> "$COMMENT_FILE"
-          echo "\`\`\`" >> "$COMMENT_FILE" # Start of code block for readability
-          cat "$RAW_DELTA_OUTPUT_FILE" >> "$COMMENT_FILE" # Insert the raw output
-          echo "\`\`\`" >> "$COMMENT_FILE" # End of code block
-          echo "</details>" >> "$COMMENT_FILE"
-
-          # Clean up the temporary raw output file
-          rm -f "$RAW_DELTA_OUTPUT_FILE"
-
-          # --- Optional: Debugging - print final comment content to logs ---
-          echo "--- Final PR comment content being used ---"
-          cat "$COMMENT_FILE"
-          echo "------------------------------------------"
+            # Always include the full raw output in a collapsible Markdown section.
+            # This makes the initial comment concise but provides all details on click.
+            echo "<details><summary>Click to view full Snyk Delta output</summary>" >> "$COMMENT_FILE"
+            echo "" >> "$COMMENT_FILE"
+            echo "\`\`\`" >> "$COMMENT_FILE" # Start of code block for readability
+            cat "$RAW_DELTA_OUTPUT_FILE" >> "$COMMENT_FILE" # Insert the raw output
+            echo "\`\`\`" >> "$COMMENT_FILE" # End of code block
+            echo "</details>" >> "$COMMENT_FILE"
+  
+            # Clean up the temporary raw output file
+            rm -f "$RAW_DELTA_OUTPUT_FILE"
+  
+            # --- Optional: Debugging - print final comment content to logs ---
+            echo "--- Final PR comment content being used ---"
+            cat "$COMMENT_FILE"
+            echo "------------------------------------------"
 
       - name: Post Snyk Delta Results to PR Comment
         uses: thollander/actions-comment-pull-request@v3
