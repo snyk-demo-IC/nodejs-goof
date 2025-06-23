@@ -1,0 +1,35 @@
+name: Snyk Delta PR Scan
+
+on:
+  pull_request:
+    branches:
+      - main  # adjust to your main/release branch
+
+jobs:
+  snyk-delta-scan:
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout PR code
+        uses: actions/checkout@v3
+        with:
+          fetch-depth: 0  # important to fetch all history for delta comparison
+
+      - name: Set up Node.js
+        uses: actions/setup-node@v3
+        with:
+          node-version: '18'  # or your preferred version
+
+      - name: Install snyk and snyk-delta
+        run: |
+          npm install -g snyk 
+          npm i -g snyk-delta
+          
+      - name: Authenticate Snyk once
+        env:
+          SNYK_TOKEN: ${{ secrets.SNYK_TOKEN }}
+        run: snyk config set api=$SNYK_TOKEN
+
+      - name: Run Snyk Delta Scan
+        run: |
+          snyk test --json --print-deps | snyk-delta
