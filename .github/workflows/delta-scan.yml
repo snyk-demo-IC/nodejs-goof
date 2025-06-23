@@ -39,8 +39,9 @@ jobs:
 
       - name: Run snyk-delta and prepare comment
         id: snyk_delta_run
-        continue-on-error: true
         run: |
+          set +e  # disable 'exit on error'
+
           COMMENT_FILE="snyk_delta_comment.md"
           RAW_DELTA_OUTPUT_FILE="snyk_delta_raw_output.txt"
 
