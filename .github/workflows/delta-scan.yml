@@ -4,10 +4,13 @@ on:
   pull_request:
     branches:
       - main  # adjust to your main/release branch
+    types: [opened, synchronize, reopened]
 
 jobs:
   snyk-delta-scan:
     runs-on: ubuntu-latest
+    permissions:
+      pull-requests: write
 
     steps:
       - name: Checkout PR code
@@ -18,8 +21,8 @@ jobs:
       - name: Set up Node.js
         uses: actions/setup-node@v3
         with:
-          node-version: '18'  # or your preferred version
-
+          node-version: '18'
+          
       - name: NPM install
         run: npm install
           
@@ -38,3 +41,12 @@ jobs:
           snyk test --json --print-deps | snyk-delta
         env:
           SNYK_TOKEN: ${{ secrets.SNYK_TOKEN }}
+
+      - name: Add Snyk Delta Results to PR Comment
+        # This step will only run if it's a pull_request event
+        if: github.event_name == 'pull_request'
+        uses: thollander/actions-comment-pull-request@v3
+        with:
+          message_path: snyk_delta_results.md # Path to the file containing the comment message
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          comment_tag: snyk-delta-results
