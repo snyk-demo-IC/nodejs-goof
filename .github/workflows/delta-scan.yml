@@ -32,21 +32,9 @@ jobs:
         env:
           SNYK_TOKEN: ${{ secrets.SNYK_TOKEN }}
         run: snyk auth "$SNYK_TOKEN"
-          
-      - name: Run Snyk Test and save output
-        id: snyk_test_output
-        run: |
-          snyk test --json --print-deps > snyk_results.json || true # The '|| true' ensures the step doesn't fail immediately if snyk test finds vulnerabilities or exits with code 1.
-        env:
-          SNYK_TOKEN: ${{ secrets.SNYK_TOKEN }} 
-
-      - name: Check Snyk Test Output
-        run: |
-          cat snyk_results.json
-        continue-on-error: true 
 
       - name: Run snyk-delta
         run: |
-          cat snyk_results.json | snyk-delta --baselineOrg 8e905715-06ac-4547-8b80-980342515daa --baselineProject 81843630-6e57-49f2-8eea-8f560e58da40 -d
+          snyk test --json --print-deps | snyk-delta
         env:
           SNYK_TOKEN: ${{ secrets.SNYK_TOKEN }}
