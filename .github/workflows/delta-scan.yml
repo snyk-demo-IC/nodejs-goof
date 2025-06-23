@@ -20,6 +20,9 @@ jobs:
         with:
           node-version: '18'  # or your preferred version
 
+      - name: NPM install
+        run: npm install
+          
       - name: Install snyk and snyk-delta
         run: |
           npm install -g snyk 
