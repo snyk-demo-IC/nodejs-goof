@@ -30,25 +30,127 @@ jobs:
         run: |
           npm install -g snyk 
           npm i -g snyk-delta
+          sudo apt-get update && sudo apt-get install -y jq
 
       - name: Setup Snyk
         env:
           SNYK_TOKEN: ${{ secrets.SNYK_TOKEN }}
         run: snyk auth "$SNYK_TOKEN"
 
-      - name: Run snyk-delta
+      - name: Run snyk-delta and capture output (Dynamic IDs)
+        id: snyk_delta_run
         run: |
-          snyk test --json --print-deps | snyk-delta 2>&1 | tee snyk_delta_results.md || true
+          RESULTS_FILE="snyk_delta_results.md"
+          TEMP_SNYK_TEST_JSON="snyk_test_output.json" # To store raw snyk test json
+          TEMP_RAW_DELTA_OUTPUT="snyk_delta_raw_output.txt" # To store snyk-delta text output
+
+          # 1. Run 'snyk test --json', capture its output, but do NOT pipe it yet.
+          #    This allows us to parse the JSON for org/project IDs.
+          snyk test --json --print-deps > "$TEMP_SNYK_TEST_JSON" || true
+
+          # --- Dynamically extract Snyk Org and Project IDs from the JSON output ---
+          # Check if the JSON file exists and is not empty before parsing
+          if [ -s "$TEMP_SNYK_TEST_JSON" ]; then
+            SNYK_ORG=$(jq -r '.org.id' "$TEMP_SNYK_TEST_JSON")
+            SNYK_PROJECT_ID=$(jq -r '.project.id' "$TEMP_SNYK_TEST_JSON")
+
+            # Store them as GitHub Actions environment variables for subsequent steps or URL
+            echo "SNYK_ORG=$SNYK_ORG" >> $GITHUB_ENV
+            echo "SNYK_PROJECT_ID=$SNYK_PROJECT_ID" >> $GITHUB_ENV
+          else
+            echo "Warning: snyk_test_output.json was empty or missing. Cannot extract Snyk Org/Project IDs dynamically."
+            # Set dummy/generic values if IDs couldn't be extracted,
+            # or handle gracefully (e.g., make the URL generic or omit it)
+            SNYK_ORG="unknown"
+            SNYK_PROJECT_ID="unknown"
+            echo "SNYK_ORG=$SNYK_ORG" >> $GITHUB_ENV
+            echo "SNYK_PROJECT_ID=$SNYK_PROJECT_ID" >> $GITHUB_ENV
+          fi
+
+          # Now, construct the Snyk Dashboard URL using the dynamically extracted IDs
+          SNYK_DASHBOARD_URL="https://app.snyk.io/org/${{ env.SNYK_ORG }}/project/${{ env.SNYK_PROJECT_ID }}"
+          if [ "$SNYK_ORG" == "unknown" ] || [ "$SNYK_PROJECT_ID" == "unknown" ]; then
+             SNYK_DASHBOARD_URL="https://app.snyk.io/" # Fallback to generic Snyk URL
+          fi
+
+
+          # 2. Pipe the original snyk test JSON output to snyk-delta.
+          #    The 'snyk-delta' command itself still doesn't need explicit org/project flags
+          #    if it can infer them from context or a .snyk file, matching your existing setup.
+          cat "$TEMP_SNYK_TEST_JSON" | \
+          snyk-delta > "$TEMP_RAW_DELTA_OUTPUT" 2>&1 || true
+
+          # 3. Initialize summary variables and parse the temporary delta output
+          NEW_VULNS_FOUND="false"
+          TOTAL_NEW_VULNS=0
+          CRITICAL_NEW=0
+          HIGH_NEW=0
+          MEDIUM_NEW=0
+          LOW_NEW=0
+          DIRECT_ADDED_COUNT=0
+          DIRECT_REMOVED_COUNT=0
+          INDIRECT_ADDED_COUNT=0
+          INDIRECT_REMOVED_COUNT=0
+
+          if [ -s "$TEMP_RAW_DELTA_OUTPUT" ]; then
+              if grep -q "✗ New vulnerabilities introduced!" "$TEMP_RAW_DELTA_OUTPUT"; then
+                  NEW_VULNS_FOUND="true"
+              fi
+
+              TOTAL_NEW_VULNS=$(grep -E '^[[:space:]]*[0-9]+/[0-9]+:' "$TEMP_RAW_DELTA_OUTPUT" | wc -l)
+
+              CRITICAL_NEW=$(grep "Critical severity vulnerabilities:" "$TEMP_RAW_DELTA_OUTPUT" | awk '{print $NF}' || echo 0)
+              HIGH_NEW=$(grep "High severity vulnerabilities:" "$TEMP_RAW_DELTA_OUTPUT" | awk '{print $NF}' || echo 0)
+              MEDIUM_NEW=$(grep "Medium severity vulnerabilities:" "$TEMP_RAW_OUTPUT" | awk '{print $NF}' || echo 0) # Corrected variable name from TEMP_RAW_DELTA_OUTPUT to TEMP_RAW_OUTPUT
+              LOW_NEW=$(grep "Low severity vulnerabilities:" "$TEMP_RAW_OUTPUT" | awk '{print $NF}' || echo 0) # Corrected variable name from TEMP_RAW_DELTA_OUTPUT to TEMP_RAW_OUTPUT
+
+              DIRECT_ADDED_COUNT=$(grep -m 1 "Direct deps:" "$TEMP_RAW_DELTA_OUTPUT" | grep -o 'Added [0-9]\+' | awk '{print $2}' || echo 0)
+              DIRECT_REMOVED_COUNT=$(grep -m 1 "Direct deps:" "$TEMP_RAW_DELTA_OUTPUT" | grep -o 'Removed [0-9]\+' | awk '{print $2}' || echo 0)
+              INDIRECT_ADDED_COUNT=$(grep -m 1 "Indirect deps:" "$TEMP_RAW_DELTA_OUTPUT" | grep -o 'Added [0-9]\+' | awk '{print $2}' || echo 0)
+              INDIRECT_REMOVED_COUNT=$(grep -m 1 "Indirect deps:" "$TEMP_RAW_DELTA_OUTPUT" | grep -o 'Removed [0-9]\+' | awk '{print $2}' || echo 0)
+          fi
+
+          # 4. Construct the PR comment content in RESULTS_FILE
+          echo "#### Snyk Delta Security Scan Results" > "$RESULTS_FILE"
+          echo "" >> "$RESULTS_FILE"
+
+          if [ "$NEW_VULNS_FOUND" = "true" ]; then
+              echo "🚨 **${TOTAL_NEW_VULNS} new vulnerabilities were introduced!**" >> "$RESULTS_FILE"
+              echo "  - Critical: **${CRITICAL_NEW}**" >> "$RESULTS_FILE"
+              echo "  - High: **${HIGH_NEW}**" >> "$RESULTS_FILE"
+              echo "  - Medium: **${MEDIUM_NEW}**" >> "$RESULTS_FILE"
+              echo "  - Low: **${LOW_NEW}**" >> "$RESULTS_FILE"
+              echo "" >> "$RESULTS_FILE"
+          else
+              echo "✅ No new vulnerabilities detected." >> "$RESULTS_FILE"
+              echo "" >> "$RESULTS_FILE"
+          fi
+
+          echo "**Dependency Changes Summary:**" >> "$RESULTS_FILE"
+          echo "- Direct dependencies added: **${DIRECT_ADDED_COUNT}**" >> "$RESULTS_FILE"
+          echo "- Direct dependencies removed: **${DIRECT_REMOVED_COUNT}**" >> "$RESULTS_FILE"
+          echo "- Indirect dependencies added: **${INDIRECT_ADDED_COUNT}**" >> "$RESULTS_FILE"
+          echo "- Indirect dependencies removed: **${INDIRECT_REMOVED_COUNT}**" >> "$RESULTS_FILE"
+          echo "" >> "$RESULTS_FILE"
+
+          echo "For full details, view the [Snyk project report]($SNYK_DASHBOARD_URL) or expand the raw output below." >> "$RESULTS_FILE"
+          echo "" >> "$RESULTS_FILE"
+
+          # Add the full raw output in a collapsible section
+          echo "<details><summary>Click to view full Snyk Delta output</summary>" >> "$RESULTS_FILE"
+          echo "" >> "$RESULTS_FILE"
+          echo "\`\`\`" >> "$RESULTS_FILE"
+          cat "$TEMP_RAW_DELTA_OUTPUT" >> "$RESULTS_FILE" # This includes all the verbose details
+          echo "\`\`\`" >> "$RESULTS_FILE"
+          echo "</details>" >> "$RESULTS_FILE"
+
+          # 5. Clean up temporary files.
+          rm -f "$TEMP_SNYK_TEST_JSON" "$TEMP_RAW_DELTA_OUTPUT"
+
+          # (Optional) For debugging: print the final file content
+          echo "--- Final content of $RESULTS_FILE for PR comment ---"
+          cat "$RESULTS_FILE"
+          echo "--- Files in current directory ---"
+          ls -la
         env:
           SNYK_TOKEN: ${{ secrets.SNYK_TOKEN }}
-
-      - name: Add Snyk Delta Results to PR Comment
-        # This step will only run if it's a pull_request event
-        if: github.event_name == 'pull_request'
-        uses: thollander/actions-comment-pull-request@v3
-        with:
-          file-path: snyk_delta_results.md # <<< Corrected: Use 'file-path'
-          github-token: ${{ secrets.GITHUB_TOKEN }} # <<< Corrected: Use 'github-token'
-          comment-tag: snyk-delta-results # <<< Corrected: Use 'comment-tag' (hyphenated)
-          mode: upsert # Good addition to update existing comment
-          create-if-not-exists: true
