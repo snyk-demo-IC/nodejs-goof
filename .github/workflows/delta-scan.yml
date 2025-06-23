@@ -38,7 +38,7 @@ jobs:
 
       - name: Run snyk-delta
         run: |
-          snyk test --json --print-deps | snyk-delta || true
+          snyk test --json --print-deps | snyk-delta 2>&1 | tee snyk_delta_results.md || true
         env:
           SNYK_TOKEN: ${{ secrets.SNYK_TOKEN }}
 
