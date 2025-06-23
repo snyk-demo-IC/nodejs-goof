@@ -47,6 +47,8 @@ jobs:
         if: github.event_name == 'pull_request'
         uses: thollander/actions-comment-pull-request@v3
         with:
-          message_path: snyk_delta_results.md # Path to the file containing the comment message
-          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
-          comment_tag: snyk-delta-results
+          file-path: snyk_delta_results.md # <<< Corrected: Use 'file-path'
+          github-token: ${{ secrets.GITHUB_TOKEN }} # <<< Corrected: Use 'github-token'
+          comment-tag: snyk-delta-results # <<< Corrected: Use 'comment-tag' (hyphenated)
+          mode: upsert # Good addition to update existing comment
+          create-if-not-exists: true
