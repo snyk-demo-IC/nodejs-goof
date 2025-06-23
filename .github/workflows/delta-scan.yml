@@ -32,6 +32,6 @@ jobs:
           
       - name: Run snyk-delta
         run: |
-          snyk test --json --print-deps | snyk-delta --baselineOrg 8e905715-06ac-4547-8b80-980342515daa --baselineProject 81843630-6e57-49f2-8eea-8f560e58da40 -d
+          snyk test --json --print-deps | snyk-delta -d
         env:
           SNYK_TOKEN: ${{ secrets.SNYK_TOKEN }}
