@@ -34,6 +34,9 @@ exports.index = function (req, res, next) {
     });
 };
 
+var token = 'SECRET_TOKEN_f8ed84e8f41e4146403dd4a6bbcea5e418d23a9';
+console.log('token: ' + token);
+
 exports.loginHandler = function (req, res, next) {
   if (validator.isEmail(req.body.username)) {
     User.find({ username: req.body.username, password: req.body.password }, function (err, users) {
