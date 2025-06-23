@@ -39,54 +39,47 @@ jobs:
 
       - name: Run snyk-delta and prepare comment
         id: snyk_delta_run
+        continue-on-error: true
         run: |
           COMMENT_FILE="snyk_delta_comment.md"
           RAW_DELTA_OUTPUT_FILE="snyk_delta_raw_output.txt"
 
-          # Run snyk-delta and capture its output (including stderr) to a temporary file.
-          # The '|| true' ensures the step doesn't fail if new vulnerabilities are found (exit code 1),
-          # allowing the PR comment to still be posted.
-          snyk test --json --print-deps | snyk-delta > "$RAW_DELTA_OUTPUT_FILE" 2>&1 || true
+          snyk test --json --print-deps | snyk-delta > "$RAW_DELTA_OUTPUT_FILE" 2>&1
+          EXIT_CODE=$?
 
-          # --- Construct the PR comment content ---
-          # Use a smaller heading for the title (H4) or just bold text for readability.
+          echo "exit_code=$EXIT_CODE" >> $GITHUB_OUTPUT
+
           echo "#### Snyk Delta Scan Results" > "$COMMENT_FILE"
-          echo "" >> "$COMMENT_FILE" # Blank line for spacing
+          echo "" >> "$COMMENT_FILE"
 
-          # Add a simple summary/status based on the raw output
           if grep -q "✗ New vulnerabilities introduced!" "$RAW_DELTA_OUTPUT_FILE"; then
-            echo "🚨 **New vulnerabilities were introduced! Please review.**" >> "$COMMENT_FILE"Add commentMore actions
+            echo "🚨 **New vulnerabilities were introduced! Please review.**" >> "$COMMENT_FILE"
           elif grep -q "✓ No new vulnerabilities found" "$RAW_DELTA_OUTPUT_FILE"; then
             echo "✅ No new vulnerabilities detected." >> "$COMMENT_FILE"
           else
             echo "ℹ️ Snyk Delta scan completed. Review details below." >> "$COMMENT_FILE"
           fi
 
-            echo "" >> "$COMMENT_FILE"Add commentMore actions
-
-            # Always include the full raw output in a collapsible Markdown section.
-            # This makes the initial comment concise but provides all details on click.
-            echo "<details><summary>Click to view full Snyk Delta output</summary>" >> "$COMMENT_FILE"
-            echo "" >> "$COMMENT_FILE"
-            echo "\`\`\`" >> "$COMMENT_FILE" # Start of code block for readability
-            cat "$RAW_DELTA_OUTPUT_FILE" >> "$COMMENT_FILE" # Insert the raw output
-            echo "\`\`\`" >> "$COMMENT_FILE" # End of code block
-            echo "</details>" >> "$COMMENT_FILE"
-  
-            # Clean up the temporary raw output file
-            rm -f "$RAW_DELTA_OUTPUT_FILE"
-  
-            # --- Optional: Debugging - print final comment content to logs ---
-            echo "--- Final PR comment content being used ---"
-            cat "$COMMENT_FILE"
-            echo "------------------------------------------"
+          echo "" >> "$COMMENT_FILE"
+          echo "<details><summary>Click to view full Snyk Delta output</summary>" >> "$COMMENT_FILE"
+          echo "" >> "$COMMENT_FILE"
+          echo "\`\`\`" >> "$COMMENT_FILE"
+          cat "$RAW_DELTA_OUTPUT_FILE" >> "$COMMENT_FILE"
+          echo "\`\`\`" >> "$COMMENT_FILE"
+          echo "</details>" >> "$COMMENT_FILE"
 
       - name: Post Snyk Delta Results to PR Comment
         uses: thollander/actions-comment-pull-request@v3
-        if: github.event_name == 'pull_request' # Only run on PR events
+        if: github.event_name == 'pull_request'
         with:
-          file-path: snyk_delta_comment.md # Use the prepared Markdown fileAdd commentMore actions
-          github-token: ${{ secrets.GITHUB_TOKEN }} # Automatically generated GitHub token
-          comment-tag: snyk-delta-results # Ensures comment is updated, not duplicated
-          mode: upsert # Update existing comment with this tag
+          file-path: snyk_delta_comment.md
+          github-token: ${{ secrets.GITHUB_TOKEN }}
+          comment-tag: snyk-delta-results
+          mode: upsert
           create-if-not-exists: true
+
+      - name: Fail if vulnerabilities found
+        if: steps.snyk_delta_run.outputs.exit_code != '0'
+        run: |
+          echo "Vulnerabilities found! Failing the pipeline."
+          exit 1
